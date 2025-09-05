@@ -1,0 +1,116 @@
+# RayService con configuración corregida para FLUX.1-dev
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: flux-1-dev-local
+spec:
+  serveConfigV2: |
+    applications:
+      - name: flux-1-dev
+        import_path: server:entrypoint
+        runtime_env:
+          pip: [
+            "diffusers>=0.30.0", 
+            "torch>=2.0.0", 
+            "torchvision", 
+            "huggingface_hub>=0.25.2", 
+            "transformers>=4.40.0", 
+            "fastapi", 
+            "uvicorn", 
+            "accelerate", 
+            "pillow", 
+            "pydantic",
+            "requests"
+          ]
+  rayClusterConfig:
+    rayVersion: '2.37.0'
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: '0.0.0.0'
+      template:
+        spec:
+          containers:
+          - name: ray-head
+            image: rayproject/ray:2.37.0
+            ports:
+            - containerPort: 6379
+              name: gcs
+            - containerPort: 8265
+              name: dashboard
+            - containerPort: 10001
+              name: client
+            - containerPort: 8000
+              name: serve
+            resources:
+              limits:
+                cpu: "2"
+                ephemeral-storage: "15Gi"
+                memory: "8Gi"
+              requests:
+                cpu: "2"
+                ephemeral-storage: "15Gi"
+                memory: "8Gi"
+            env:
+              - name: NVIDIA_VISIBLE_DEVICES
+                value: "all"
+              - name: NVIDIA_DRIVER_CAPABILITIES
+                value: "compute,utility"
+              - name: HUGGINGFACE_HUB_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: hf-secret
+                    key: hf_api_token
+            volumeMounts:
+            - name: server-code
+              mountPath: /tmp/server.py
+              subPath: server.py
+          volumes:
+          - name: server-code
+            configMap:
+              name: flux-server-code
+          nodeSelector:
+            cloud.google.com/machine-family: e2
+    workerGroupSpecs:
+    - replicas: 1
+      minReplicas: 1
+      maxReplicas: 4
+      groupName: gpu-group
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+          - name: ray-worker
+            image: rayproject/ray:2.37.0-gpu
+            resources:
+              limits:
+                cpu: 4
+                memory: "16Gi"
+                nvidia.com/gpu: 1
+              requests:
+                cpu: 3
+                memory: "16Gi"
+                nvidia.com/gpu: 1
+            env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
+            - name: HUGGINGFACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+            volumeMounts:
+            - name: server-code
+              mountPath: /tmp/server.py
+              subPath: server.py
+          volumes:
+          - name: server-code
+            configMap:
+              name: flux-server-code
+          nodeSelector:
+            accelerator: nvidia-h100
+          tolerations:
+          - key: nvidia.com/gpu
+            operator: Exists
+            effect: NoSchedule

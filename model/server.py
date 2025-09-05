@@ -45,7 +45,7 @@ class ImagineRequest(BaseModel):
     prompt: str
     img_size: int = 512
     guidance_scale: float = 2.5
-    num_inference_steps: int = 24  # menor por defecto: FlowMatch suele tolerarlo
+    num_inference_steps: int = 4  # FLUX.1-schnell necesita pocos pasos
     seed: Optional[int] = None
 
 
@@ -78,7 +78,7 @@ class APIIngress:
             raise HTTPException(status_code=400, detail="prompt cannot be empty")
 
         # Sanitizar pasos para evitar sets muy bajos/altos por error
-        steps = min(max(int(body.num_inference_steps), 2), 64)
+        steps = min(max(int(body.num_inference_steps), 1), 64)
 
         # Ray Serve agrupa estos kwargs en listas para el método batcheado.
         image = await self.handle.generate.remote(
@@ -151,7 +151,7 @@ class FluxKontextEdit:
 
         self._load_image = load_image
         self.autocast_dtype = None  # se setea más abajo
-        model_id = "black-forest-labs/FLUX.1-dev"
+        model_id = "black-forest-labs/FLUX.1-schnell"
 
         # ===== H100-friendly toggles globales =====
         _torch.backends.cuda.matmul.allow_tf32 = True
@@ -251,7 +251,7 @@ class FluxKontextEdit:
                 _ = self.pipe(
                     prompt="test",
                     guidance_scale=2.5,
-                    num_inference_steps=2,
+                    num_inference_steps=1,
                     height=256,
                     width=256,
                 ).images[0]
@@ -295,7 +295,7 @@ class FluxKontextEdit:
         if not any_seed:
             generators = None
 
-        steps = [min(max(int(s or 24), 2), 64) for s in num_inference_steps]
+        steps = [min(max(int(s or 4), 1), 64) for s in num_inference_steps]
         gscales = [float(g) for g in guidance_scales]
 
         # Nota: FluxPipeline es para text-to-image, no image-to-image

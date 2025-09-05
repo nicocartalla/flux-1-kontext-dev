@@ -53,18 +53,18 @@ spec:
                 cpu: "2"
                 ephemeral-storage: "15Gi"
                 memory: "8Gi"
+            env:
+              - name: NVIDIA_VISIBLE_DEVICES
+                value: "all"
+              - name: NVIDIA_DRIVER_CAPABILITIES
+                value: "compute,utility"
+              - name: HUGGINGFACE_HUB_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: hf-secret
+                    key: hf_api_token
           nodeSelector:
             cloud.google.com/machine-family: e2
-          env:
-            - name: NVIDIA_VISIBLE_DEVICES
-              value: "all"
-            - name: NVIDIA_DRIVER_CAPABILITIES
-              value: "compute,utility"
-            - name: HUGGINGFACE_HUB_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: hf-secret
-                  key: hf_api_token
     workerGroupSpecs:
     - replicas: 1
       minReplicas: 1

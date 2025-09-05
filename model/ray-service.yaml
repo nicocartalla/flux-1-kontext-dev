@@ -24,7 +24,19 @@ spec:
         import_path: model.server:entrypoint
         runtime_env:
           working_dir: "https://github.com/nicocartalla/flux-1-kontext-dev/archive/main.zip"
-          pip: ["diffusers==0.12.1", "torch", "torchvision", "huggingface_hub==0.25.2", "transformers", "fastapi", "uvicorn", "accelerate", "pillow"]
+          pip: [
+            "diffusers>=0.30.0", 
+            "torch>=2.0.0", 
+            "torchvision", 
+            "huggingface_hub>=0.25.2", 
+            "transformers>=4.40.0", 
+            "fastapi", 
+            "uvicorn", 
+            "accelerate", 
+            "pillow", 
+            "pydantic",
+            "requests"
+          ]
   rayClusterConfig:
     rayVersion: '2.37.0'
     headGroupSpec:

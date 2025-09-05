@@ -43,7 +43,6 @@ app = FastAPI(title="FluxKontext Server (H100-optimized)", version="1.3.1")
 
 class ImagineRequest(BaseModel):
     prompt: str
-    image_url: HttpUrl
     img_size: int = 512
     guidance_scale: float = 2.5
     num_inference_steps: int = 24  # menor por defecto: FlowMatch suele tolerarlo
@@ -84,7 +83,6 @@ class APIIngress:
         # Ray Serve agrupa estos kwargs en listas para el método batcheado.
         image = await self.handle.generate.remote(
             prompts=body.prompt,
-            image_urls=str(body.image_url),
             img_sizes=int(body.img_size),
             guidance_scales=float(body.guidance_scale),
             num_inference_steps=steps,
@@ -132,7 +130,7 @@ class FluxKontextEdit:
         use_compile: bool = USE_COMPILE,
     ):
         # IMPORTS locales para evitar capturas no serializables
-        from diffusers import FluxKontextPipeline
+        from diffusers import FluxPipeline
         from diffusers.utils import load_image
         from huggingface_hub import login
         import torch as _torch  # noqa: F401
@@ -153,7 +151,7 @@ class FluxKontextEdit:
 
         self._load_image = load_image
         self.autocast_dtype = None  # se setea más abajo
-        model_id = "black-forest-labs/FLUX.1-Kontext-dev"
+        model_id = "black-forest-labs/FLUX.1-dev"
 
         # ===== H100-friendly toggles globales =====
         _torch.backends.cuda.matmul.allow_tf32 = True
@@ -181,7 +179,7 @@ class FluxKontextEdit:
         # ===== Carga del pipeline (con sharding opcional) =====
         try:
             if use_device_map and ACTOR_GPUS >= 2:
-                self.pipe = FluxKontextPipeline.from_pretrained(
+                self.pipe = FluxPipeline.from_pretrained(
                     model_id,
                     torch_dtype=dtype,
                     token=token,
@@ -189,17 +187,17 @@ class FluxKontextEdit:
                     device_map="balanced",
                 )
             else:
-                self.pipe = FluxKontextPipeline.from_pretrained(
+                self.pipe = FluxPipeline.from_pretrained(
                     model_id, torch_dtype=dtype, token=token, cache_dir=HF_CACHE
                 ).to("cuda")
         except TypeError:
             # Compat versiones viejas
             if use_device_map and ACTOR_GPUS >= 2:
-                self.pipe = FluxKontextPipeline.from_pretrained(
+                self.pipe = FluxPipeline.from_pretrained(
                     model_id, torch_dtype=dtype, use_auth_token=token, cache_dir=HF_CACHE
                 )
             else:
-                self.pipe = FluxKontextPipeline.from_pretrained(
+                self.pipe = FluxPipeline.from_pretrained(
                     model_id, torch_dtype=dtype, use_auth_token=token, cache_dir=HF_CACHE
                 ).to("cuda")
 
@@ -249,13 +247,13 @@ class FluxKontextEdit:
 
         # ===== Warm-up para amortizar compilación y caches =====
         try:
-            dummy = Image.new("RGB", (256, 256), (0, 0, 0))
             with _torch.inference_mode(), _torch.amp.autocast("cuda", dtype=self.autocast_dtype):
                 _ = self.pipe(
-                    image=dummy,
-                    prompt=".",
+                    prompt="test",
                     guidance_scale=2.5,
                     num_inference_steps=2,
+                    height=256,
+                    width=256,
                 ).images[0]
         except Exception:
             pass
@@ -276,19 +274,12 @@ class FluxKontextEdit:
     async def generate(
         self,
         prompts: List[str],
-        image_urls: List[str],
         img_sizes: List[int],
         guidance_scales: List[float],
         num_inference_steps: List[int],
         seeds: List[Optional[int]],
     ):
         import torch as _torch
-
-        # Preprocesamiento
-        imgs: List[Image.Image] = []
-        for url, sz in zip(image_urls, img_sizes):
-            img = self._load_image(url)
-            imgs.append(self._resize_square(img, sz))
 
         # Generators por item (semillas)
         generators: Optional[List[Any]] = []
@@ -307,15 +298,18 @@ class FluxKontextEdit:
         steps = [min(max(int(s or 24), 2), 64) for s in num_inference_steps]
         gscales = [float(g) for g in guidance_scales]
 
-        # Intento vectorizado; si falla, fallback item-a-item
+        # Nota: FluxPipeline es para text-to-image, no image-to-image
+        # Para img2img necesitarías FluxImg2ImgPipeline, pero eso requiere cambios mayores
+        # Por ahora, usamos solo text-to-image
         try:
             with _torch.inference_mode(), _torch.amp.autocast("cuda", dtype=self.autocast_dtype):
                 out = self.pipe(
-                    image=imgs,
                     prompt=prompts,
                     guidance_scale=gscales,
                     num_inference_steps=steps,
                     generator=generators,
+                    height=img_sizes,
+                    width=img_sizes,
                 )
             return out.images  # Ray Serve devolverá el elemento correspondiente a esta solicitud
         except Exception:
@@ -323,11 +317,12 @@ class FluxKontextEdit:
             for i in range(len(prompts)):
                 with _torch.inference_mode(), _torch.amp.autocast("cuda", dtype=self.autocast_dtype):
                     out = self.pipe(
-                        image=imgs[i],
                         prompt=prompts[i],
                         guidance_scale=gscales[i],
                         num_inference_steps=steps[i],
                         generator=None if generators is None else generators[i],
+                        height=img_sizes[i],
+                        width=img_sizes[i],
                     )
                 results.append(out.images[0])
             return results

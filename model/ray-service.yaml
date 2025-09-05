@@ -1,0 +1,104 @@
+# Copyright 2024 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# [START gke_ai_ml_gke_ray_rayserve_stable_diffusion_rayservice]
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: flux-1-kontext-dev
+spec:
+  serveConfigV2: |
+    applications:
+      - name: flux-1-kontext-dev
+        import_path: model.server:entrypoint
+        runtime_env:
+          working_dir: "https://github.com/nicocartalla/flux-1-kontext-dev/archive/main.zip"
+          pip: ["diffusers==0.12.1", "torch", "torchvision", "huggingface_hub==0.25.2", "transformers", "fastapi", "uvicorn", "accelerate", "pillow"]
+  rayClusterConfig:
+    rayVersion: '2.37.0'
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: '0.0.0.0'
+      template:
+        spec:
+          containers:
+          - name: ray-head
+            image:  rayproject/ray:2.37.0
+            ports:
+            - containerPort: 6379
+              name: gcs
+            - containerPort: 8265
+              name: dashboard
+            - containerPort: 10001
+              name: client
+            - containerPort: 8000
+              name: serve
+            resources:
+              limits:
+                cpu: "2"
+                ephemeral-storage: "15Gi"
+                memory: "8Gi"
+              requests:
+                cpu: "2"
+                ephemeral-storage: "15Gi"
+                memory: "8Gi"
+          nodeSelector:
+            cloud.google.com/machine-family: e2
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
+            - name: HUGGINGFACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+    workerGroupSpecs:
+    - replicas: 1
+      minReplicas: 1
+      maxReplicas: 4
+      groupName: gpu-group
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+          - name: ray-worker
+            image: rayproject/ray:2.37.0-gpu
+            resources:
+              limits:
+                cpu: 4
+                memory: "16Gi"
+                nvidia.com/gpu: 1
+              requests:
+                cpu: 3
+                memory: "16Gi"
+                nvidia.com/gpu: 1
+            env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
+            - name: HUGGINGFACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: hf_api_token
+          nodeSelector:
+            accelerator: nvidia-h100
+          tolerations:
+          - key: nvidia.com/gpu
+            operator: Exists
+            effect: NoSchedule
+# [END gke_ai_ml_gke_ray_rayserve_stable_diffusion_rayservice]

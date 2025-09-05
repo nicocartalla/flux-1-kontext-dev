@@ -1,0 +1,9 @@
+# Dependencias para el servidor FluxKontext
+ray[serve]
+fastapi
+uvicorn
+torch
+git+https://github.com/huggingface/diffusers.git
+transformers
+accelerate
+pillow

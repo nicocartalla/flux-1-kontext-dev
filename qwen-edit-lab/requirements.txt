@@ -1,0 +1,8 @@
+# requirements.txt
+torch
+diffusers
+transformers
+accelerate
+Pillow
+invisible-watermark
+fastapi

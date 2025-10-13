@@ -1,6 +1,6 @@
 # Dockerfile
-# Usamos una imagen base de PyTorch con CUDA 12.1, ideal para GPUs H100
-FROM pytorch/pytorch:2.2.2-cuda12.1-cudnn8-runtime
+FROM pytorch/pytorch:2.8.0-cuda12.9-cudnn9-runtime
+
 
 # Establecemos el directorio de trabajo dentro del contenedor
 WORKDIR /app

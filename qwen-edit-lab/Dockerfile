@@ -7,6 +7,8 @@ WORKDIR /app
 # Copiamos el archivo de requerimientos de la app
 COPY diffuser-app/requirements.txt .
 
+RUN apt-get update && apt-get install -y git
+
 # Instalamos las dependencias
 RUN pip install --no-cache-dir -r requirements.txt
 

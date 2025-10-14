@@ -1,0 +1,23 @@
+# Core dependencies
+torch>=2.0.0
+diffusers>=0.30.0
+transformers>=4.40.0
+accelerate>=0.25.0
+
+# API
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+
+# Image processing
+Pillow>=10.0.0
+invisible-watermark>=0.2.0
+
+# Configuration
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Optional: for better performance
+# ninja
+# flash-attn
+

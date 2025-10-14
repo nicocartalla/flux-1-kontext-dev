@@ -6,7 +6,7 @@ FROM rayproject/ray:2.37.0-gpu
 WORKDIR /app
 
 # Instalar git para poder instalar diffusers desde GitHub
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+RUN sudo apt-get update && sudo apt-get install -y git && sudo rm -rf /var/lib/apt/lists/*
 
 # 2. INSTALAMOS PYTORCH Y SUS DEPENDENCIAS DE CUDA
 # La imagen base de Ray usa CUDA 12.1, por lo que instalamos la versión

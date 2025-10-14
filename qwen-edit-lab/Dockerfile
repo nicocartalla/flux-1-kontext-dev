@@ -1,6 +1,6 @@
 # Dockerfile
 #FROM pytorch/pytorch:2.8.0-cuda12.9-cudnn9-runtime
-FROM rayproject/ray:2.37.0-gpu
+FROM rayproject/ray:2.50.0-gpu
 #rayproject/ray:2.37.0-gpu
 # Establecemos el directorio de trabajo dentro del contenedor
 WORKDIR /app
@@ -11,7 +11,7 @@ RUN sudo apt-get update && sudo apt-get install -y git && sudo rm -rf /var/lib/a
 # 2. INSTALAMOS PYTORCH Y SUS DEPENDENCIAS DE CUDA
 # La imagen base de Ray usa CUDA 12.1, por lo que instalamos la versión
 # de PyTorch compatible.
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
 
 
 

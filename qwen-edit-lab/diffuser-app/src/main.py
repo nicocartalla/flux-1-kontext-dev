@@ -2,6 +2,7 @@
 Aplicación principal FastAPI para servir modelos diffusers.
 Compatible con OpenAI API.
 """
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -26,49 +27,10 @@ settings = get_settings()
 capabilities = get_model_capabilities()
 
 
-# Crear aplicación FastAPI
-app = FastAPI(
-    title=settings.app_name,
-    version=settings.app_version,
-    description="""
-    API compatible con OpenAI para servir modelos diffusers.
-    
-    ## Endpoints Disponibles
-    
-    Dependiendo de las capacidades del modelo cargado:
-    
-    - **POST /v1/images/generations**: Genera imágenes desde texto (Text-to-Image)
-    - **POST /v1/images/edits**: Edita imágenes usando prompts (Image Editing) ✅ 
-    - **POST /v1/images/variations**: Crea variaciones de imágenes (Image Variation)
-    
-    ✅ = Habilitado para el modelo actual (Qwen Image Edit)
-    
-    ## Parámetros Adicionales
-    
-    Además de los parámetros estándar de OpenAI, soportamos:
-    - `num_inference_steps`: Número de pasos de inferencia
-    - `true_cfg_scale`: Classifier-free guidance scale (Qwen specific)
-    - `guidance_scale`: Guidance scale general
-    - `negative_prompt`: Prompt negativo
-    - `seed`: Seed para reproducibilidad
-    """,
-    docs_url="/docs",
-    redoc_url="/redoc",
-)
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Inicialización en el startup de la aplicación."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler para startup y shutdown."""
+    # Startup
     logger.info("=" * 80)
     logger.info(f"Iniciando {settings.app_name} v{settings.app_version}")
     logger.info("=" * 80)
@@ -101,6 +63,52 @@ async def startup_event():
     logger.info(f"Servidor listo en http://{settings.host}:{settings.port}")
     logger.info(f"Documentación: http://{settings.host}:{settings.port}/docs")
     logger.info("=" * 80)
+    
+    yield
+    
+    # Shutdown (cleanup si es necesario)
+    logger.info("Cerrando aplicación...")
+
+
+# Crear aplicación FastAPI con lifespan
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+    description="""
+    API compatible con OpenAI para servir modelos diffusers.
+    
+    ## Endpoints Disponibles
+    
+    Dependiendo de las capacidades del modelo cargado:
+    
+    - **POST /v1/images/generations**: Genera imágenes desde texto (Text-to-Image)
+    - **POST /v1/images/edits**: Edita imágenes usando prompts (Image Editing) ✅ 
+    - **POST /v1/images/variations**: Crea variaciones de imágenes (Image Variation)
+    
+    ✅ = Habilitado para el modelo actual (Qwen Image Edit)
+    
+    ## Parámetros Adicionales
+    
+    Además de los parámetros estándar de OpenAI, soportamos:
+    - `num_inference_steps`: Número de pasos de inferencia
+    - `true_cfg_scale`: Classifier-free guidance scale (Qwen specific)
+    - `guidance_scale`: Guidance scale general
+    - `negative_prompt`: Prompt negativo
+    - `seed`: Seed para reproducibilidad
+    """,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")

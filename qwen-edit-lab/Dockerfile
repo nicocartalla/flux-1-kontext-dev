@@ -39,7 +39,9 @@ ENV DIFFUSER_PORT=8000
 ENV DIFFUSER_DEVICE=cuda
 ENV DIFFUSER_TORCH_DTYPE=bfloat16
 
+USER root
 RUN chown -R ray /app
+USER ray
 # Configurar PYTHONPATH para imports correctos
 ENV PYTHONPATH=/app
 

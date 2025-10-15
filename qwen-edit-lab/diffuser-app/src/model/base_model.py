@@ -89,3 +89,4 @@ class BaseDiffusionModel(ABC):
             f"{self.__class__.__name__} no soporta variaciones de imagen"
         )
 
+

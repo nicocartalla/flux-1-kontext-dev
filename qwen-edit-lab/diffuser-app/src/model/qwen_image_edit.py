@@ -26,27 +26,134 @@ class QwenImageEditModel(BaseDiffusionModel):
         self.device = self.settings.device
         
     def load_model(self) -> None:
-        """Carga el pipeline de Qwen Image Edit."""
+        """Carga el pipeline de Qwen Image Edit con optimizaciones para H200."""
         logger.info(f"Cargando modelo {self.settings.model_id}...")
         
-        # Determinar el dtype
+        # ====================================================================
+        # 1. Información de GPU/CUDA
+        # ====================================================================
+        if torch.cuda.is_available():
+            logger.info(f"🚀 CUDA disponible: {torch.cuda.get_device_name(0)}")
+            logger.info(f"🚀 Versión CUDA: {torch.version.cuda}")
+            logger.info(f"🚀 Número de GPUs: {torch.cuda.device_count()}")
+            logger.info(f"🚀 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+            compute_cap = torch.cuda.get_device_capability(0)
+            logger.info(f"🚀 Compute Capability: {compute_cap[0]}.{compute_cap[1]}")
+        else:
+            logger.warning("⚠️ CUDA NO está disponible, usando CPU")
+        
+        # ====================================================================
+        # 2. Habilitar optimizaciones de cuDNN [CRÍTICO]
+        # ====================================================================
+        if torch.cuda.is_available():
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            logger.info("✅ cuDNN benchmark habilitado")
+            logger.info("✅ TensorFloat-32 (TF32) habilitado")
+        
+        # ====================================================================
+        # 3. Determinar el dtype
+        # ====================================================================
         dtype_map = {
             "bfloat16": torch.bfloat16,
             "float16": torch.float16,
             "float32": torch.float32,
         }
         torch_dtype = dtype_map.get(self.settings.torch_dtype, torch.bfloat16)
+        logger.info(f"🔧 Usando dtype: {torch_dtype}")
         
-        # Cargar el pipeline
+        # ====================================================================
+        # 4. Cargar el pipeline
+        # ====================================================================
         self.pipeline = QwenImageEditPipeline.from_pretrained(
             self.settings.model_id,
             torch_dtype=torch_dtype
         )
         
-        # Mover a dispositivo
+        # ====================================================================
+        # 5. Mover a dispositivo
+        # ====================================================================
         self.pipeline.to(self.device)
         
-        logger.info(f"Modelo cargado exitosamente en {self.device}")
+        # ====================================================================
+        # 6. Aplicar optimizaciones de memoria y velocidad
+        # ====================================================================
+        if self.device == "cuda":
+            try:
+                # Intentar habilitar xFormers (memory-efficient attention)
+                self.pipeline.enable_xformers_memory_efficient_attention()
+                logger.info("✅ xFormers memory-efficient attention habilitado")
+            except Exception as e:
+                logger.warning(f"⚠️ xFormers no disponible: {e}")
+                try:
+                    # Fallback: attention slicing
+                    self.pipeline.enable_attention_slicing()
+                    logger.info("✅ Attention slicing habilitado (fallback)")
+                except Exception as e2:
+                    logger.warning(f"⚠️ No se pudo habilitar attention slicing: {e2}")
+            
+            # Detectar y optimizar el componente principal del pipeline
+            # Diferentes pipelines usan diferentes nombres: unet, transformer, dit, etc.
+            pytorch_version = tuple(map(int, torch.__version__.split('.')[:2]))
+            if pytorch_version >= (2, 0):
+                # Buscar el componente principal
+                main_component = None
+                component_name = None
+                
+                for name in ['transformer', 'dit', 'unet', 'model']:
+                    if hasattr(self.pipeline, name):
+                        comp = getattr(self.pipeline, name)
+                        if comp is not None and hasattr(comp, 'parameters'):
+                            main_component = comp
+                            component_name = name
+                            logger.info(f"🎯 Componente principal detectado: {component_name}")
+                            break
+                
+                if main_component is not None:
+                    try:
+                        logger.info(f"🔥 Compilando {component_name} con torch.compile()...")
+                        compiled_component = torch.compile(
+                            main_component,
+                            mode="reduce-overhead",
+                            fullgraph=False
+                        )
+                        setattr(self.pipeline, component_name, compiled_component)
+                        logger.info(f"✅ {component_name} compilado con torch.compile() [modo: reduce-overhead]")
+                        
+                        # Optimizar layout de memoria para Tensor Cores
+                        try:
+                            compiled_component.to(memory_format=torch.channels_last)
+                            logger.info(f"✅ {component_name} configurado con channels_last")
+                        except Exception as e:
+                            logger.warning(f"⚠️ No se pudo configurar channels_last en {component_name}: {e}")
+                            
+                    except Exception as e:
+                        logger.warning(f"⚠️ No se pudo compilar {component_name}: {e}")
+                else:
+                    logger.warning("⚠️ No se encontró componente principal para optimizar")
+            else:
+                logger.warning(f"⚠️ PyTorch {torch.__version__} no soporta torch.compile()")
+        
+        # ====================================================================
+        # 7. Verificar que el modelo está en GPU
+        # ====================================================================
+        if self.device == "cuda" and torch.cuda.is_available():
+            # Verificar dispositivo de componentes principales
+            for comp_name in ['transformer', 'text_encoder', 'vae']:
+                try:
+                    comp = getattr(self.pipeline, comp_name, None)
+                    if comp is not None and hasattr(comp, 'parameters'):
+                        device = next(comp.parameters()).device
+                        logger.info(f"✅ {comp_name} en dispositivo: {device}")
+                except Exception as e:
+                    logger.debug(f"No se pudo verificar {comp_name}: {e}")
+            
+            logger.info(f"✅ Modelo cargado exitosamente en GPU: {self.device}")
+            logger.info(f"✅ GPU Memory Allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
+            logger.info(f"✅ GPU Memory Reserved: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
+        else:
+            logger.info(f"ℹ️ Modelo cargado en: {self.device}")
     
     def warmup(self) -> None:
         """Realiza un warmup opcional del modelo."""
@@ -148,4 +255,5 @@ class QwenImageEditModel(BaseDiffusionModel):
         logger.info("Edición completada exitosamente")
         
         return [result_image]
+
 

@@ -73,7 +73,7 @@ class ImageService:
         img_str = base64.b64encode(buffered.getvalue()).decode()
         return img_str
     
-    def edit_image(
+    async def edit_image(
         self,
         request: ImageEditRequest,
         image_file: Optional[bytes] = None
@@ -105,8 +105,8 @@ class ImageService:
         if request.mask:
             mask = self.decode_image(request.mask)
         
-        # Llamar al modelo
-        images = self.model.edit_image(
+        # Llamar al modelo (puede ser async o sync)
+        result = self.model.edit_image(
             image=image,
             prompt=request.prompt,
             mask=mask,
@@ -116,6 +116,13 @@ class ImageService:
             seed=request.seed,
             true_cfg_scale=request.true_cfg_scale,
         )
+        
+        # Si el resultado es una coroutine, hacer await
+        import inspect
+        if inspect.iscoroutine(result):
+            images = await result
+        else:
+            images = result
         
         return images
     
@@ -181,4 +188,5 @@ class ImageService:
         )
         
         return images
+
 

@@ -22,3 +22,4 @@ def get_image_service() -> ImageService:
         raise RuntimeError("Image service no inicializado")
     return image_service
 
+

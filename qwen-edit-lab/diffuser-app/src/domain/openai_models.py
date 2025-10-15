@@ -123,3 +123,4 @@ class ErrorResponse(BaseModel):
     """Respuesta de error estándar de OpenAI."""
     error: ErrorDetail
 
+
